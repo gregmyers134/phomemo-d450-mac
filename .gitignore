@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+out/
+*.zip
+ruler.png
+.DS_Store

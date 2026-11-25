@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>@BUNDLE_ID@</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@APP@/Contents/MacOS/d450d</string>
+		<string>--service</string>
+	</array>
+	<!-- Start at login, and start again if it stops. -->
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<!-- Only in a logged-in desktop session, where macOS can ask about Bluetooth. -->
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+</dict>
+</plist>

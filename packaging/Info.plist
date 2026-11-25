@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>@BUNDLE_ID@</string>
+	<key>CFBundleName</key>
+	<string>D450 Print Service</string>
+	<key>CFBundleDisplayName</key>
+	<string>D450 Print Service</string>
+	<key>CFBundleExecutable</key>
+	<string>d450d</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<!-- No Dock icon and no menu bar: it only runs in the background. -->
+	<key>LSUIElement</key>
+	<true/>
+	<!-- Shown by macOS when it asks whether the service may use Bluetooth. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Sends labels to your Phomemo D450 printer.</string>
+</dict>
+</plist>
