@@ -67,7 +67,7 @@ Two printers are added. They differ only for a page that holds a label and other
 | Printer | Prints |
 |---|---|
 | Phomemo D450 label printer | The label. The rest of that page is left out. |
-| Phomemo D450 label + rest of page | The label, then the rest of that page (instructions, receipt, packing slip) shrunk onto a second label. |
+| Phomemo D450 label + rest of page | The label, then the rest of that page (instructions, receipt, packing slip) shrunk onto a second label. A stray heading or footer line alone is not given a label. |
 
 Every page that has ink prints. A page of instructions or a packing slip is shrunk onto one
 label, turned sideways if that prints larger. For a PDF with pages you do not need, choose
@@ -79,7 +79,12 @@ the pages in the Print dialog.
 - A 6x4" landscape page is turned 90 degrees.
 - Any other page (Letter, A4) is searched for its label. Dashed "cut here" lines, and a
   scissors mark on them, are taken out first so that one close to a label is not read as
-  part of it. Then:
+  part of it.
+- If four dashed lines form a cut-out box, what is inside the box is the label. It is
+  fitted to the label's full width. If it is then longer than one label (a 4x8" label,
+  say), it continues on the next label, broken at a blank band so nothing is cut through.
+  A page heading outside the box is left out.
+- Otherwise:
   1. If everything on the page fits on the label, the blank space round it is dropped and
      it is centred at its exact size (no resampling, so barcodes stay sharp).
   2. If everything on the page has the shape of a label but is bigger, it is one enlarged

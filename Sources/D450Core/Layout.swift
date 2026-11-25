@@ -3,7 +3,9 @@
 /// - A page the size of the label prints as it is.
 /// - A page the size of the label turned sideways is turned 90 degrees.
 /// - Any other page (Letter, A4) is searched for its label. Dashed "cut here"
-///   lines are taken out first. Then:
+///   lines are taken out first. If four of them form a cut-out box, what is
+///   inside the box is the label: it is fitted to the label's full width and,
+///   if it is then longer than a label, continued on further labels. Otherwise:
 ///   1. If everything on the page fits on the label, the blank space round it
 ///      is dropped and it is centred at its exact size (no resampling, so
 ///      barcodes stay sharp). Within 1% of fitting, the overhang is trimmed.
@@ -167,7 +169,8 @@ public enum LabelLayout {
 
         // A dashed "cut here" line is not part of any label. Taking it out first
         // stops one that runs close to a label from being read as part of it.
-        let (cleaned, cutLines) = withoutCutLines(image, below: inkLevel)
+        let (cleaned, linesAcross, linesDown) = withoutCutLines(image, below: inkLevel)
+        let cutLines = linesAcross.count + linesDown.count
         if cutLines > 0 {
             image = cleaned
             map = InkMap(image, below: inkLevel)
@@ -233,9 +236,63 @@ public enum LabelLayout {
                     if thin <= 6 && long * 2 >= span { blank(line) }
                 }
             }
+            // A header or footer line alone is not worth a label: ask for half an inch of inked rows.
             let remains = InkMap(left, below: inkLevel)
-            guard let box = remains.tight(whole), remains.ink.lazy.filter({ $0 }).count >= 200 else { return [] }
+            guard let box = remains.tight(whole),
+                  remains.profile(whole, rows: true).filter({ $0 }).count >= 100 else { return [] }
             return [label(from: box, "rest of the page", in: left)]
+        }
+
+        /// Fits `b` to the label's width and, if it is then longer than a label,
+        /// carries on onto further labels. Each break is made at the widest blank
+        /// band in the lower half of the label, so that nothing is cut through.
+        func fullWidth(from b: Box, _ why: String) -> [Result] {
+            if fitsEitherWay(b) { return [label(from: b, why)] }
+            let (roomW, roomH) = (labelW - 2 * shrinkMargin, labelH - 2 * shrinkMargin)
+            let s = min(1, Double(roomW) / Double(b.w))
+            let nw = max(1, min(roomW, Int((Double(b.w) * s).rounded())))
+            let nh = max(1, Int((Double(b.h) * s).rounded()))
+            if nh <= roomH { return [label(from: b, why)] }
+            let art = image.cropped(x: b.x, y: b.y, width: b.w, height: b.h).resized(toWidth: nw, height: nh)
+            let inked = InkMap(art, below: inkLevel).profile(Box(x: 0, y: 0, w: nw, h: nh), rows: true)
+
+            var parts = [(from: Int, to: Int)]()
+            var pos = 0
+            while pos < nh {
+                while pos < nh && !inked[pos] { pos += 1 }          // skip blank rows at the top of a part
+                if pos >= nh { break }
+                var cut = min(nh, pos + roomH)
+                if cut < nh {
+                    // Widest blank band (8 rows or more) that reaches into the lower half of this label.
+                    var widest = (from: 0, length: 0)
+                    var r = pos + roomH / 2
+                    while r < cut {
+                        if inked[r] { r += 1; continue }
+                        var start = r
+                        while start > pos && !inked[start - 1] { start -= 1 }
+                        var end = r
+                        while end < nh && !inked[end] { end += 1 }
+                        if end - start >= 8 && end - start >= widest.length { widest = (start, end - start) }
+                        r = end
+                    }
+                    if widest.length > 0 { cut = min(cut, widest.from + widest.length / 2) }
+                }
+                parts.append((pos, cut))
+                pos = cut
+            }
+            let scaled = "\(why): \(b.w)x\(b.h) at (\(b.x),\(b.y)) on a \(image.width)x\(image.height) page; "
+                + (s < 1 ? "fitted to the label's width at \(Int((s * 100).rounded()))%" : "exact size")
+            return parts.enumerated().map { i, part in
+                let piece = art.cropped(x: 0, y: part.from, width: nw, height: part.to - part.from)
+                let placed = piece.placed(onWidth: labelW, height: labelH, x: (labelW - nw) / 2, y: shrinkMargin)
+                return finish(placed, notes + [scaled + (parts.count > 1 ? "; part \(i + 1) of \(parts.count)" : "")])
+            }
+        }
+
+        // 0. A dashed cut-out box marks the label: what is inside it is the label,
+        //    at the label's full width, and what is outside it is the rest of the page.
+        if let box = LabelLayout.cutBox(across: linesAcross, down: linesDown), let inside = map.tight(box) {
+            return fullWidth(from: inside, "label in a cut-out box") + (includeRest ? rest(without: [box]) : [])
         }
 
         // 1. Everything on the page fits on the label. 2. Everything is one enlarged label.
@@ -265,24 +322,47 @@ public enum LabelLayout {
     /// Blanks dashed "cut here" lines that run across or down the page, with
     /// any small mark sitting on them such as a scissors symbol. Returns the
     /// cleaned image and the number of lines taken out.
-    static func withoutCutLines(_ image: GrayImage, below level: UInt8) -> (GrayImage, Int) {
+    static func withoutCutLines(_ image: GrayImage, below level: UInt8) -> (GrayImage, across: [Box], down: [Box]) {
         var out = image
-        var removed = blankDashedRows(&out, below: level)
+        let across = blankDashedRows(&out, below: level)
         // Lines running down the page: the same search on the page turned sideways.
         var turned = out.rotated(clockwise: true)
-        let down = blankDashedRows(&turned, below: level)
-        if down > 0 {
-            out = turned.rotated(clockwise: false)
-            removed += down
+        let sideways = blankDashedRows(&turned, below: level)
+        if !sideways.isEmpty { out = turned.rotated(clockwise: false) }
+        // Turned clockwise, page dot (x, y) sits at (height - 1 - y, x).
+        let down = sideways.map { Box(x: $0.y, y: image.height - $0.x - $0.w, w: $0.h, h: $0.w) }
+        return (out, across, down)
+    }
+
+    /// The inside of a dashed cut-out box, if two cut lines across the page and
+    /// two down it meet at four corners. The largest such box wins.
+    static func cutBox(across: [Box], down: [Box]) -> Box? {
+        let slack = 40      // 5 mm: the corner dashes belong to one line or the other
+        var best: Box?
+        for top in across {
+            for bottom in across where bottom.y > top.y + top.h {
+                for left in down {
+                    for right in down where right.x > left.x + left.w {
+                        let corners = abs(left.x - top.x) <= slack && abs(left.x - bottom.x) <= slack
+                            && abs(right.x + right.w - top.x - top.w) <= slack && abs(right.x + right.w - bottom.x - bottom.w) <= slack
+                            && abs(top.y - left.y) <= slack && abs(top.y - right.y) <= slack
+                            && abs(bottom.y + bottom.h - left.y - left.h) <= slack && abs(bottom.y + bottom.h - right.y - right.h) <= slack
+                        guard corners else { continue }
+                        let inside = Box(x: left.x + left.w, y: top.y + top.h,
+                                         w: right.x - left.x - left.w, h: bottom.y - top.y - top.h)
+                        if inside.w > 0 && inside.h > 0 && inside.area > (best?.area ?? 0) { best = inside }
+                    }
+                }
+            }
         }
-        return (out, removed)
+        return best
     }
 
     /// A row is part of a dashed line when it is made of at least 8 dashes of
     /// equal length at equal spacing that together span half the page or more.
     /// Up to 10 such rows in a row, with next to nothing just above and below
     /// them, make a cut line.
-    private static func blankDashedRows(_ img: inout GrayImage, below level: UInt8) -> Int {
+    private static func blankDashedRows(_ img: inout GrayImage, below level: UInt8) -> [Box] {
         let (w, h) = (img.width, img.height)
         var span = [(x0: Int, x1: Int)?](repeating: nil, count: h)
         for y in 0 ..< h {
@@ -297,19 +377,47 @@ public enum LabelLayout {
                     x += 1
                 }
             }
-            guard runs.count >= 8, let first = runs.first, let last = runs.last else { continue }
-            let (x0, x1) = (first.start, last.start + last.length - 1)
+            guard runs.count >= 8 else { continue }
+            let gaps = (1 ..< runs.count).map { runs[$0].start - runs[$0 - 1].start - runs[$0 - 1].length }
+            let gap = gaps.sorted()[gaps.count / 2]
+            guard gap >= 2 else { continue }
+            // Stretches of evenly spaced runs. The line is the longest one, joined with
+            // any neighbour of 3 dashes or more that lies within 1.5 cm of it: a scissors
+            // mark sitting on the line breaks it in two. Other ink in the same row, such
+            // as a letter of a heading, is left out.
+            var stretches = [(from: Int, to: Int)]()
+            var start = 0
+            for i in 1 ... runs.count where i == runs.count || abs(gaps[i - 1] - gap) > 3 {
+                stretches.append((start, i - 1))
+                start = i
+            }
+            guard var k = stretches.indices.max(by: { stretches[$0].to - stretches[$0].from < stretches[$1].to - stretches[$1].from })
+            else { continue }
+            var (from, to) = stretches[k]
+            guard to - from + 1 >= 8 else { continue }
+            func near(_ a: Int, _ b: Int) -> Bool {      // run a ends within 1.5 cm of where run b starts
+                runs[b].start - runs[a].start - runs[a].length <= 120
+            }
+            let main = k
+            while k > 0, stretches[k - 1].to - stretches[k - 1].from >= 2, near(stretches[k - 1].to, from) {
+                k -= 1
+                from = stretches[k].from
+            }
+            k = main
+            while k + 1 < stretches.count, stretches[k + 1].to - stretches[k + 1].from >= 2, near(to, stretches[k + 1].from) {
+                k += 1
+                to = stretches[k].to
+            }
+            let (x0, x1) = (runs[from].start, runs[to].start + runs[to].length - 1)
             guard (x1 - x0 + 1) * 2 >= w else { continue }
-            let lengths = runs.map { $0.length }.sorted()
+            let (mainFrom, mainTo) = stretches[main]
+            let lengths = runs[mainFrom ... mainTo].map { $0.length }.sorted()
             let dash = lengths[lengths.count / 2]
             guard dash <= 60, lengths.filter({ abs($0 - dash) <= 2 }).count * 5 >= lengths.count * 4 else { continue }
-            let gaps = (1 ..< runs.count).map { runs[$0].start - runs[$0 - 1].start - runs[$0 - 1].length }.sorted()
-            let gap = gaps[gaps.count / 2]
-            guard gap >= 2, gaps.filter({ abs($0 - gap) <= 2 }).count * 5 >= gaps.count * 4 else { continue }
             span[y] = (x0, x1)
         }
 
-        var removed = 0
+        var removed = [Box]()
         var y = 0
         while y < h {
             guard let top = span[y] else { y += 1; continue }
@@ -332,11 +440,12 @@ public enum LabelLayout {
             for yy in y0 ... y1 { for x in x0 ... x1 { img.pixels[yy * w + x] = 255 } }
             // Small marks sitting on the line, such as a scissors symbol.
             for r in [y0 - 3, y0 - 2, y0 - 1, y1 + 1, y1 + 2, y1 + 3] where r >= 0 && r < h {
-                for x in max(0, x0 - 10) ... min(w - 1, x1 + 10) where img.pixels[r * w + x] < level {
+                // A mark at the end of the line can sit just outside the run of dashes: look 1 cm further.
+                for x in max(0, x0 - 80) ... min(w - 1, x1 + 80) where img.pixels[r * w + x] < level {
                     eraseSmallMark(&img, x, r, below: level)
                 }
             }
-            removed += 1
+            removed.append(Box(x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1))
         }
         return removed
     }

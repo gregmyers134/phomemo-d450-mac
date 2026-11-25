@@ -365,6 +365,44 @@ func runStep3Tests() {
           "cut line running down the page: left out, got \(down.first?.note ?? "nil")")
     // Rows of text and a label's own solid rules are not taken for cut lines.
     check(m.first?.note.contains("cut line") == true && pr0(mixed) == 1, "the dashed line between label and instructions counts as one cut line")
+    // A dashed cut-out box holding a label longer than 6 in, under a page heading that
+    // shares a column with the box's left side. The inside of the box is the label: full
+    // width, continued on a second label, broken at the blank band and not through the content.
+    var boxed = GrayImage(width: 1679, height: 2374)
+    textBlock(on: &boxed, x: 143, y: 90, width: 400, lines: 1)                 // heading
+    func dashes(_ img: inout GrayImage, x: Int, y: Int, length: Int, across: Bool) {
+        for d in stride(from: 0, to: length, by: 17) { for k in 0 ..< 8 where d + k < length { for t in 0 ..< 3 {
+            if across { img[x + d + k, y + t] = 0 } else { img[x + t, y + d + k] = 0 }
+        } } }
+    }
+    dashes(&boxed, x: 287, y: 168, length: 1105, across: true); dashes(&boxed, x: 287, y: 2316, length: 1105, across: true)
+    dashes(&boxed, x: 287, y: 168, length: 2151, across: false); dashes(&boxed, x: 1389, y: 168, length: 2151, across: false)
+    let upper = blockImage(pageWidth: 1040, pageHeight: 1480, x: 0, y: 0, width: 1040, height: 1480)
+    let lower = blockImage(pageWidth: 600, pageHeight: 380, x: 0, y: 0, width: 600, height: 380)
+    paste(upper, onto: &boxed, x: 320, y: 230)
+    paste(lower, onto: &boxed, x: 540, y: 1820)
+    let bx = LabelLayout.layoutAll(page(boxed), config: cfg, includeRest: true)
+    check(bx.count == 2, "cut-out box: the label on two labels and no label for the heading, got \(bx.count): \(bx.map { $0.note })")
+    check(bx.first?.note.contains("label in a cut-out box: 1040x1970 at (320,230)") == true
+          && bx.first?.note.contains("fitted to the label's width at 76%; part 1 of 2") == true, "cut-out box: note, got \(bx.first?.note ?? "nil")")
+    if bx.count == 2 {
+        func inkRows(_ p: MonoBitmap) -> (first: Int, last: Int, left: Int, right: Int) {
+            var (f, l, lx, rx) = (-1, -1, 812, -1)
+            for y in 0 ..< p.height { for x in 0 ..< p.width where p.isBlack(x, y) { if f < 0 { f = y }; l = y; lx = min(lx, x); rx = max(rx, x) } }
+            return (f, l, lx, rx)
+        }
+        let (a, b) = (inkRows(bx[0].page), inkRows(bx[1].page))
+        check(a.left == 12 && a.right == 799, "cut-out box: part 1 spans the label's width inside the margin (\(a.left)...\(a.right))")
+        check(a.first == 12 && abs(a.last - (12 + 1121)) <= 2, "cut-out box: part 1 is the whole upper block (rows \(a.first)...\(a.last))")
+        check(b.first == 12 && abs(b.last - (12 + 287)) <= 2, "cut-out box: part 2 is the whole lower block (rows \(b.first)...\(b.last))")
+    }
+    check(LabelLayout.layoutAll(page(boxed), config: cfg).count == 2, "cut-out box: the same two labels on the label-only queue")
+    // A cut-out box round a label that fits is printed at exact size, as before.
+    var boxedExact = GrayImage(width: 1679, height: 2374)
+    dashes(&boxedExact, x: 287, y: 168, length: 1105, across: true); dashes(&boxedExact, x: 287, y: 1500, length: 1105, across: true)
+    dashes(&boxedExact, x: 287, y: 168, length: 1335, across: false); dashes(&boxedExact, x: 1389, y: 168, length: 1335, across: false)
+    paste(art, onto: &boxedExact, x: 430, y: 240)
+    check(LabelLayout.layoutAll(page(boxedExact), config: cfg).first?.page == r3?.page, "cut-out box round a label that fits: exact size")
     // The same with the label upright on the left and a receipt on the right.
     var beside = GrayImage(width: 2233, height: 1726)
     paste(art, onto: &beside, x: 60, y: 200)
