@@ -100,6 +100,15 @@ public final class BlePrinter: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     // MARK: Connecting
 
+    /// Starts Bluetooth without connecting to anything. macOS asks the user
+    /// for permission the first time; doing this at start-up puts that
+    /// question there, not in the middle of the first print job.
+    public func wake() {
+        cond.lock()
+        if central == nil { central = CBCentralManager(delegate: self, queue: queue) }
+        cond.unlock()
+    }
+
     /// Finds the printer, connects, and checks it is in the bitmap mode this program produces.
     public func connect() throws {
         cond.lock()
@@ -387,6 +396,7 @@ public final class BleSink: LabelSink {
         self.printer = BlePrinter(name: config.bluetoothName, log: log)
         self.doneTimeout = config.doneTimeoutSeconds
         self.log = log
+        printer.wake()
     }
 
     public func received(jobId: Int, document: [UInt8], format: RasterFormat) {}

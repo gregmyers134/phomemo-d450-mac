@@ -49,8 +49,8 @@ for an administrator password):
 scripts/install.sh --all-users
 ```
 
-The first time you print, macOS asks whether "D450 Print Service" may use Bluetooth. Click
-Allow. Each user of the Mac is asked once.
+macOS asks whether "D450 Print Service" may use Bluetooth. Click Allow. Each user of the Mac
+is asked once, the first time the service starts for them.
 
 To remove it, run `scripts/uninstall.sh` (with `--all-users` if you installed that way).
 

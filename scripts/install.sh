@@ -43,6 +43,13 @@ fi
 APP="$APP_DIR/D450 Print Service.app"
 AGENT="$AGENT_DIR/$BUNDLE_ID.plist"
 
+# One install per Mac user: either their own, or the one shared by all users.
+if [ "$ALL_USERS" = 0 ] && [ -e "/Library/LaunchAgents/$BUNDLE_ID.plist" ]; then
+    echo "The service is already installed for all users of this Mac." >&2
+    echo "To update it, run:  scripts/install.sh --all-users" >&2
+    exit 1
+fi
+
 echo "Building..."
 swift build -c release --product d450d
 BINARY="$(swift build -c release --show-bin-path)/d450d"
@@ -50,6 +57,11 @@ BINARY="$(swift build -c release --show-bin-path)/d450d"
 echo "Stopping any running copy..."
 launchctl bootout "gui/$(id -u)/$BUNDLE_ID" 2>/dev/null || true
 pkill -x d450d 2>/dev/null || true
+if [ "$ALL_USERS" = 1 ]; then
+    # Replace this user's own install, if there is one, with the shared one.
+    rm -f "$HOME/Library/LaunchAgents/$BUNDLE_ID.plist"
+    rm -rf "$HOME/Applications/D450 Print Service.app"
+fi
 
 # Put the app together in a temporary folder, then move it into place.
 STAGE="$(mktemp -d)"
@@ -99,8 +111,8 @@ cat <<DONE
 
 Installed. The service starts by itself at login.
 
-The first time you print, macOS asks whether "D450 Print Service" may use
-Bluetooth. Click Allow. Each user of this Mac is asked once.
+macOS asks whether "D450 Print Service" may use Bluetooth. Click Allow.
+Each user of this Mac is asked once, the first time the service starts for them.
 
 Printers:  Phomemo D450 label printer          the label only
            Phomemo D450 label + rest of page   the label, then the rest of that page
