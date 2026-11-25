@@ -62,6 +62,10 @@ that is connected to it. The service connects only while a job is printing.
 Print from any app. Leave the paper size as the document's own (US Letter for most return
 labels) and the scale at 100% / Actual size. Do not use "Scale to fit".
 
+An A4 document printed on US Letter paper at 100% loses about a centimetre at the top and
+bottom, because A4 is taller. Labels are still found, but anything in those strips is
+gone. Choose A4 as the paper size for such a document if something is missing.
+
 Two printers are added. They differ only for a page that holds a label and other things:
 
 | Printer | Prints |
@@ -80,7 +84,8 @@ the pages in the Print dialog.
 - Any other page (Letter, A4) is searched for its label. Dashed "cut here" lines, and a
   scissors mark on them, are taken out first so that one close to a label is not read as
   part of it.
-- If four dashed lines form a cut-out box, what is inside the box is the label. It is
+- If dashed lines form a cut-out box, what is inside the box is the label. One side of the
+  box may be missing, as happens when an A4 page is printed on US Letter paper. It is
   fitted to the label's full width. If it is then longer than one label (a 4x8" label,
   say), it continues on the next label, broken at a blank band so nothing is cut through.
   A page heading outside the box is left out.

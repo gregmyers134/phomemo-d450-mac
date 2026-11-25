@@ -397,6 +397,19 @@ func runStep3Tests() {
         check(b.first == 12 && abs(b.last - (12 + 287)) <= 2, "cut-out box: part 2 is the whole lower block (rows \(b.first)...\(b.last))")
     }
     check(LabelLayout.layoutAll(page(boxed), config: cfg).count == 2, "cut-out box: the same two labels on the label-only queue")
+    // The same page printed on shorter paper: its bottom is cut off, and with it the
+    // bottom side of the box and the ends of the left and right sides.
+    let cutShort = boxed.cropped(x: 0, y: 70, width: 1679, height: 2233)
+    let cs = LabelLayout.layoutAll(page(cutShort), config: cfg)
+    check(cs.count == 2 && cs.first?.note.contains("3 cut lines left out; label in a cut-out box: 1040x1970 at (320,160)") == true,
+          "cut-out box with its bottom side off the page: still the label, got \(cs.map { $0.note })")
+    check(cs.first?.page == bx.first?.page && cs.last?.page == bx.last?.page, "cut-out box with its bottom side off the page: the same two labels")
+    // Three dashed lines that do not meet are not a box.
+    var loose = GrayImage(width: 1679, height: 2374)
+    dashes(&loose, x: 287, y: 168, length: 1105, across: true)
+    dashes(&loose, x: 100, y: 900, length: 1300, across: false); dashes(&loose, x: 1600, y: 900, length: 1300, across: false)
+    paste(art, onto: &loose, x: 430, y: 300)
+    check(LabelLayout.layoutAll(page(loose), config: cfg).first?.note.contains("cut-out box") == false, "dashed lines that do not meet are not a box")
     // A cut-out box round a label that fits is printed at exact size, as before.
     var boxedExact = GrayImage(width: 1679, height: 2374)
     dashes(&boxedExact, x: 287, y: 168, length: 1105, across: true); dashes(&boxedExact, x: 287, y: 1500, length: 1105, across: true)

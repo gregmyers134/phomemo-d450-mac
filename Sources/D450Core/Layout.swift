@@ -3,8 +3,8 @@
 /// - A page the size of the label prints as it is.
 /// - A page the size of the label turned sideways is turned 90 degrees.
 /// - Any other page (Letter, A4) is searched for its label. Dashed "cut here"
-///   lines are taken out first. If four of them form a cut-out box, what is
-///   inside the box is the label: it is fitted to the label's full width and,
+///   lines are taken out first. If they form a cut-out box (one side may be
+///   missing), what is inside the box is the label: it is fitted to the label's full width and,
 ///   if it is then longer than a label, continued on further labels. Otherwise:
 ///   1. If everything on the page fits on the label, the blank space round it
 ///      is dropped and it is centred at its exact size (no resampling, so
@@ -334,25 +334,42 @@ public enum LabelLayout {
         return (out, across, down)
     }
 
-    /// The inside of a dashed cut-out box, if two cut lines across the page and
-    /// two down it meet at four corners. The largest such box wins.
+    /// The inside of a dashed cut-out box. Two cut lines down the page joined at
+    /// their ends by at least one across it make a box, and so do two across
+    /// joined by at least one down. A side may be missing: a page printed on
+    /// shorter paper loses its bottom edge, and the box's bottom side with it.
+    /// The largest box wins.
     static func cutBox(across: [Box], down: [Box]) -> Box? {
         let slack = 40      // 5 mm: the corner dashes belong to one line or the other
+        func close(_ a: Int, _ b: Int) -> Bool { abs(a - b) <= slack }
         var best: Box?
+        func offer(_ b: Box) {
+            if b.w >= 300 && b.h >= 300 && b.area > (best?.area ?? 0) { best = b }
+        }
+        // Left and right sides, with a top, a bottom or both.
+        for left in down {
+            for right in down where right.x > left.x + left.w {
+                guard close(left.y, right.y), close(left.y + left.h, right.y + right.h) else { continue }
+                func spans(_ line: Box) -> Bool { close(line.x, left.x) && close(line.x + line.w, right.x + right.w) }
+                let top = across.first { spans($0) && close($0.y, min(left.y, right.y)) }
+                let bottom = across.first { spans($0) && close($0.y + $0.h, max(left.y + left.h, right.y + right.h)) }
+                guard top != nil || bottom != nil else { continue }
+                let y0 = top.map { $0.y + $0.h } ?? min(left.y, right.y)
+                let y1 = bottom.map { $0.y } ?? max(left.y + left.h, right.y + right.h)
+                offer(Box(x: left.x + left.w, y: y0, w: right.x - left.x - left.w, h: y1 - y0))
+            }
+        }
+        // Top and bottom sides, with a left, a right or both.
         for top in across {
             for bottom in across where bottom.y > top.y + top.h {
-                for left in down {
-                    for right in down where right.x > left.x + left.w {
-                        let corners = abs(left.x - top.x) <= slack && abs(left.x - bottom.x) <= slack
-                            && abs(right.x + right.w - top.x - top.w) <= slack && abs(right.x + right.w - bottom.x - bottom.w) <= slack
-                            && abs(top.y - left.y) <= slack && abs(top.y - right.y) <= slack
-                            && abs(bottom.y + bottom.h - left.y - left.h) <= slack && abs(bottom.y + bottom.h - right.y - right.h) <= slack
-                        guard corners else { continue }
-                        let inside = Box(x: left.x + left.w, y: top.y + top.h,
-                                         w: right.x - left.x - left.w, h: bottom.y - top.y - top.h)
-                        if inside.w > 0 && inside.h > 0 && inside.area > (best?.area ?? 0) { best = inside }
-                    }
-                }
+                guard close(top.x, bottom.x), close(top.x + top.w, bottom.x + bottom.w) else { continue }
+                func spans(_ line: Box) -> Bool { close(line.y, top.y) && close(line.y + line.h, bottom.y + bottom.h) }
+                let left = down.first { spans($0) && close($0.x, min(top.x, bottom.x)) }
+                let right = down.first { spans($0) && close($0.x + $0.w, max(top.x + top.w, bottom.x + bottom.w)) }
+                guard left != nil || right != nil else { continue }
+                let x0 = left.map { $0.x + $0.w } ?? min(top.x, bottom.x)
+                let x1 = right.map { $0.x } ?? max(top.x + top.w, bottom.x + bottom.w)
+                offer(Box(x: x0, y: top.y + top.h, w: x1 - x0, h: bottom.y - top.y - top.h))
             }
         }
         return best
