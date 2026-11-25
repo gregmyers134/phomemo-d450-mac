@@ -245,10 +245,9 @@ send it print jobs. Any user of the same Mac can print through it.
 
 ## Status and limits
 
-- `scripts/install.sh` and the start-at-login setup are new and have not yet been run on a
-  Mac. Everything under "Running it by hand" has been.
-- Developed and tested with one D450 (firmware V2.4.9) and one Mac. Other firmware
-  versions may behave differently.
+- Developed and tested with one D450 (firmware V2.4.9) and one Mac, including the
+  all-users install. Other firmware versions may behave differently. The one-user
+  install and the uninstaller have not been run yet.
 - Bluetooth Low Energy only. Classic Bluetooth did not work from macOS in testing: the
   printer's serial service is listed, but no channel to it would open.
 - 4x6" labels only.
